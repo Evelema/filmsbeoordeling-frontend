@@ -6,15 +6,8 @@ interface Props {
   onTextDetected: (text: string) => void;
 }
 
-function cleanOcrText(raw: string): string {
-  return raw
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.length > 2)
-    // Houd alleen regels met minstens 2 gewone letters
-    .filter((l) => (l.match(/[a-zA-ZÀ-ÿ]/g) || []).length >= 2)
-    .join(" ")
-    // Verwijder alles behalve letters, cijfers en basisleestekens
+function cleanLine(line: string): string {
+  return line
     .replace(/[^a-zA-Z0-9À-ÿ\s:\-']/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -24,32 +17,29 @@ export default function CameraCapture({ onTextDetected }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<"idle" | "processing" | "done" | "error">("idle");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [rawText, setRawText] = useState<string>("");
+  const [lines, setLines] = useState<string[]>([]);
 
   const handleFile = async (file: File) => {
     setStatus("processing");
-    setRawText("");
+    setLines([]);
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
 
     try {
       const { createWorker } = await import("tesseract.js");
-      // Gebruik alleen Engels voor snellere en betrouwbaardere herkenning
-      const worker = await createWorker("eng", 1, {
-        logger: () => {},
-      });
-
+      const worker = await createWorker("eng", 1, { logger: () => {} });
       const { data } = await worker.recognize(file);
       await worker.terminate();
 
-      const text = cleanOcrText(data.text);
-      setRawText(text);
+      // Haal alle afzonderlijke regels op en filter op kwaliteit
+      const detectedLines = data.lines
+        ?.map((l) => cleanLine(l.text))
+        .filter((l) => l.length > 1 && (l.match(/[a-zA-ZÀ-ÿ]/g) || []).length >= 2)
+        ?? [];
 
-      if (text.length > 1) {
+      if (detectedLines.length > 0) {
+        setLines(detectedLines);
         setStatus("done");
-        // Zet tekst in zoekbalk maar zoek NIET automatisch —
-        // gebruiker controleert eerst en tikt dan op 🔍
-        onTextDetected(text);
       } else {
         setStatus("error");
       }
@@ -62,6 +52,13 @@ export default function CameraCapture({ onTextDetected }: Props) {
     const file = e.target.files?.[0];
     if (file) handleFile(file);
     e.target.value = "";
+  };
+
+  const handleSelectLine = (line: string) => {
+    onTextDetected(line);
+    setLines([]);
+    setStatus("idle");
+    setPreviewUrl(null);
   };
 
   return (
@@ -94,36 +91,54 @@ export default function CameraCapture({ onTextDetected }: Props) {
         onChange={handleChange}
       />
 
-      {/* Preview + status */}
-      {previewUrl && (
-        <div className="w-full flex flex-col items-center gap-2">
-          <img
-            src={previewUrl}
-            alt="Genomen foto"
-            className="w-40 h-28 object-cover rounded-xl border border-cinema-border"
-          />
+      {/* Foto preview */}
+      {previewUrl && status !== "idle" && (
+        <img
+          src={previewUrl}
+          alt="Genomen foto"
+          className="w-full max-h-40 object-contain rounded-xl border border-cinema-border"
+        />
+      )}
 
-          {status === "processing" && (
-            <span className="text-cinema-muted text-sm">Bezig met herkennen…</span>
-          )}
+      {/* Kiesbare tekstregels */}
+      {status === "done" && lines.length > 0 && (
+        <div className="w-full flex flex-col gap-2">
+          <p className="text-cinema-muted text-xs text-center">
+            Tik op de <span className="text-cinema-gold font-semibold">filmtitel</span> hieronder:
+          </p>
+          {lines.map((line, i) => (
+            <button
+              key={i}
+              onClick={() => handleSelectLine(line)}
+              className="w-full text-left bg-cinema-card border border-cinema-border rounded-xl px-4 py-3 text-cinema-text text-sm active:border-cinema-gold active:bg-cinema-gold/10 transition-colors"
+            >
+              {line}
+            </button>
+          ))}
+          <button
+            onClick={() => { setLines([]); setStatus("idle"); setPreviewUrl(null); }}
+            className="text-cinema-muted text-xs text-center mt-1 underline"
+          >
+            Opnieuw proberen
+          </button>
+        </div>
+      )}
 
-          {status === "done" && rawText && (
-            <div className="w-full bg-cinema-card border border-cinema-gold/40 rounded-xl p-3">
-              <p className="text-cinema-muted text-xs mb-1">Herkende tekst — controleer en druk op 🔍:</p>
-              <p className="text-cinema-text text-sm font-medium">{rawText}</p>
-            </div>
-          )}
-
-          {status === "error" && (
-            <div className="w-full bg-red-900/30 border border-red-700 rounded-xl p-3">
-              <p className="text-red-400 text-sm">Tekst niet herkend. Probeer:</p>
-              <ul className="text-red-400 text-xs mt-1 list-disc list-inside">
-                <li>Meer licht op de titel</li>
-                <li>Dichter bij de tekst</li>
-                <li>Rustige achtergrond</li>
-              </ul>
-            </div>
-          )}
+      {/* Foutmelding */}
+      {status === "error" && (
+        <div className="w-full bg-red-900/30 border border-red-700 rounded-xl p-3">
+          <p className="text-red-400 text-sm font-medium">Tekst niet herkend</p>
+          <ul className="text-red-400 text-xs mt-1 list-disc list-inside space-y-1">
+            <li>Zorg voor genoeg licht</li>
+            <li>Richt alleen op de titel, niet de hele hoes</li>
+            <li>Houd de camera stil en recht</li>
+          </ul>
+          <button
+            onClick={() => { setStatus("idle"); setPreviewUrl(null); }}
+            className="mt-2 text-red-400 text-xs underline"
+          >
+            Opnieuw proberen
+          </button>
         </div>
       )}
     </div>
