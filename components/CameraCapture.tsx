@@ -38,7 +38,8 @@ export default function CameraCapture({ onTextDetected }: Props) {
         setLines(detected);
         setStatus("done");
       } else {
-        setErrorMsg("Geen tekst gevonden in de foto.");
+        // Geen tekst gevonden maar geen fout — toon tip om handmatig te typen
+        setErrorMsg(data.error ?? "Geen tekst herkend in de foto.");
         setStatus("error");
       }
     } catch (e) {
