@@ -6,44 +6,43 @@ interface Props {
   onTextDetected: (text: string) => void;
 }
 
-function cleanLine(line: string): string {
-  return line
-    .replace(/[^a-zA-Z0-9À-ÿ\s:\-']/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export default function CameraCapture({ onTextDetected }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<"idle" | "processing" | "done" | "error">("idle");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [lines, setLines] = useState<string[]>([]);
+  const [errorMsg, setErrorMsg] = useState("");
 
   const handleFile = async (file: File) => {
     setStatus("processing");
     setLines([]);
-    const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
+    setErrorMsg("");
+    setPreviewUrl(URL.createObjectURL(file));
 
     try {
-      const { createWorker } = await import("tesseract.js");
-      const worker = await createWorker("eng", 1, { logger: () => {} });
-      const { data } = await worker.recognize(file);
-      await worker.terminate();
+      const formData = new FormData();
+      formData.append("file", file);
 
-      // Haal alle afzonderlijke regels op en filter op kwaliteit
-      const detectedLines = data.lines
-        ?.map((l) => cleanLine(l.text))
-        .filter((l) => l.length > 1 && (l.match(/[a-zA-ZÀ-ÿ]/g) || []).length >= 2)
-        ?? [];
+      const r = await fetch(`${API_URL}/ocr`, {
+        method: "POST",
+        body: formData,
+      });
 
-      if (detectedLines.length > 0) {
-        setLines(detectedLines);
+      if (!r.ok) throw new Error(`OCR fout: ${r.status}`);
+      const data = await r.json();
+      const detected: string[] = data.lines ?? [];
+
+      if (detected.length > 0) {
+        setLines(detected);
         setStatus("done");
       } else {
+        setErrorMsg("Geen tekst gevonden in de foto.");
         setStatus("error");
       }
-    } catch {
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : "Onbekende fout");
       setStatus("error");
     }
   };
@@ -59,6 +58,13 @@ export default function CameraCapture({ onTextDetected }: Props) {
     setLines([]);
     setStatus("idle");
     setPreviewUrl(null);
+  };
+
+  const reset = () => {
+    setStatus("idle");
+    setPreviewUrl(null);
+    setLines([]);
+    setErrorMsg("");
   };
 
   return (
@@ -82,7 +88,6 @@ export default function CameraCapture({ onTextDetected }: Props) {
         )}
       </button>
 
-      {/* Verborgen file input */}
       <input
         ref={inputRef}
         type="file"
@@ -92,19 +97,19 @@ export default function CameraCapture({ onTextDetected }: Props) {
       />
 
       {/* Foto preview */}
-      {previewUrl && status !== "idle" && (
+      {previewUrl && (
         <img
           src={previewUrl}
           alt="Genomen foto"
-          className="w-full max-h-40 object-contain rounded-xl border border-cinema-border"
+          className="w-full max-h-44 object-contain rounded-xl border border-cinema-border"
         />
       )}
 
-      {/* Kiesbare tekstregels */}
+      {/* Herkende regels — tik de filmtitel aan */}
       {status === "done" && lines.length > 0 && (
         <div className="w-full flex flex-col gap-2">
           <p className="text-cinema-muted text-xs text-center">
-            Tik op de <span className="text-cinema-gold font-semibold">filmtitel</span> hieronder:
+            Tik op de <span className="text-cinema-gold font-semibold">filmtitel</span>:
           </p>
           {lines.map((line, i) => (
             <button
@@ -115,10 +120,7 @@ export default function CameraCapture({ onTextDetected }: Props) {
               {line}
             </button>
           ))}
-          <button
-            onClick={() => { setLines([]); setStatus("idle"); setPreviewUrl(null); }}
-            className="text-cinema-muted text-xs text-center mt-1 underline"
-          >
+          <button onClick={reset} className="text-cinema-muted text-xs underline mt-1">
             Opnieuw proberen
           </button>
         </div>
@@ -127,16 +129,13 @@ export default function CameraCapture({ onTextDetected }: Props) {
       {/* Foutmelding */}
       {status === "error" && (
         <div className="w-full bg-red-900/30 border border-red-700 rounded-xl p-3">
-          <p className="text-red-400 text-sm font-medium">Tekst niet herkend</p>
+          <p className="text-red-400 text-sm font-medium">{errorMsg || "Tekst niet herkend"}</p>
           <ul className="text-red-400 text-xs mt-1 list-disc list-inside space-y-1">
-            <li>Zorg voor genoeg licht</li>
-            <li>Richt alleen op de titel, niet de hele hoes</li>
-            <li>Houd de camera stil en recht</li>
+            <li>Meer licht op de titel</li>
+            <li>Richt alleen op de titel, niet de hele poster</li>
+            <li>Houd de camera stil</li>
           </ul>
-          <button
-            onClick={() => { setStatus("idle"); setPreviewUrl(null); }}
-            className="mt-2 text-red-400 text-xs underline"
-          >
+          <button onClick={reset} className="mt-2 text-red-400 text-xs underline">
             Opnieuw proberen
           </button>
         </div>
