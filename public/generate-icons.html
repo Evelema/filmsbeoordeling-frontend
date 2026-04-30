@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head><title>Icon generator</title></head>
+<body>
+<!--
+  Open dit bestand in een browser, klik op de knoppen,
+  en sla de gegenereerde afbeeldingen op als icon-192.png en icon-512.png
+  in de /public map.
+-->
+<script>
+function makeIcon(size) {
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  // Achtergrond
+  ctx.fillStyle = '#0d0d0d';
+  ctx.fillRect(0, 0, size, size);
+  // Gouden cirkel
+  ctx.fillStyle = '#f5c518';
+  ctx.beginPath();
+  ctx.arc(size/2, size/2, size*0.42, 0, Math.PI*2);
+  ctx.fill();
+  // Emoji
+  ctx.font = `${size*0.45}px serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('🎬', size/2, size/2 + size*0.03);
+  // Download
+  const link = document.createElement('a');
+  link.download = `icon-${size}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+</script>
+<button onclick="makeIcon(192)" style="margin:10px;padding:10px;font-size:16px">Download icon-192.png</button>
+<button onclick="makeIcon(512)" style="margin:10px;padding:10px;font-size:16px">Download icon-512.png</button>
+<p>Sla beide bestanden op in: <code>frontend/public/</code></p>
+</body>
+</html>
