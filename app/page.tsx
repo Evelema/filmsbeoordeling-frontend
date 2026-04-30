@@ -39,14 +39,11 @@ export default function Home() {
     }
   }, []);
 
-  const handleOcrText = useCallback(
-    (text: string) => {
-      setOcrText(text);
-      // Automatisch zoeken na OCR
-      search(text);
-    },
-    [search]
-  );
+  const handleOcrText = useCallback((text: string) => {
+    // Vul de zoekbalk in maar zoek nog niet —
+    // gebruiker controleert de herkende tekst eerst
+    setOcrText(text);
+  }, []);
 
   return (
     <main className="min-h-screen bg-cinema-bg flex flex-col">
